@@ -12,6 +12,7 @@ connectDB();
 const allowedOrigins = [
   'https://online-shopping-front-end.vercel.app',
   'https://online-shopping-front-end.vercel.app/',
+  'https://online-craft-shopping-front-end.vercel.app',
   'http://localhost:3000'
 ];
 app.use(cors({
