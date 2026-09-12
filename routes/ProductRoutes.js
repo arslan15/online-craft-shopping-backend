@@ -3,37 +3,55 @@ const Product = require('../model/Product');
 const router = express.Router();
 const multer = require('multer');
 const { verifyToken, authorize } = require('../middleware/authMiddleware');
-const storage = multer.memoryStorage();
-const upload = multer({ storage: storage });
 
-router.get('/', (req, res) => {
-  res.send('Product route working');
+// Configure multer to use memory storage (Safe for Vercel serverless)
+const storage = multer.memoryStorage();
+const upload = multer({ 
+  storage: storage,
+  limits: { fileSize: 4 * 1024 * 1024 } // 4MB limit to stay safely under Vercel's limits
 });
-router.post('/addProduct',upload.single('ImageUrl'), verifyToken,
-  authorize(['Admin']), async(req,res)=>{
+
+// Test route
+router.get('/', (req, res) => {
+  res.status(200).json({ message: 'Product route working' });
+});
+
+// Add Product Route
+router.post('/addProduct', upload.single('ImageUrl'), verifyToken, authorize(['Admin']), async (req, res) => {
   try {
-    console.log(verifyToken);
-    const {productName, ProductDescription, productCategoryType,ProductQty,price} = req.body;
-    console.log("req.body:", req.body);
+    const { productName, ProductDescription, productCategoryType, ProductQty, price } = req.body;
+
     if (!req.file) {
-            return res.status(400).json({ message: 'Product image is required.' });
-        }
-    const newProduct = new Product({productName, ProductDescription, productCategoryType,ProductQty,image: {
-                data: req.file.buffer,
-                contentType: req.file.mimetype
-            },price });
+      return res.status(400).json({ message: 'Product image is required.' });
+    }
+
+    const newProduct = new Product({
+      productName, 
+      ProductDescription, 
+      productCategoryType, 
+      ProductQty,
+      image: {
+        data: req.file.buffer,
+        contentType: req.file.mimetype
+      },
+      price 
+    });
+
     await newProduct.save();
 
-    res.status(201).json({ message: 'Product added successfully!'
-      ,product: newProduct });
+    res.status(201).json({ 
+      message: 'Product added successfully!', 
+      product: newProduct 
+    });
+
   } catch (error) {
     console.error('ADD PRODUCT CATCH ERROR:', error.message);
-  
     res.status(500).json({ message: 'Server error during adding product.' });
-
   }
-})
-router.get('/Products', verifyToken, authorize(['User','Admin']), async (req, res) => {
+});
+
+// Get Products Route (with Pagination, Search, and Base64 Image Formatting)
+router.get('/Products', verifyToken, authorize(['User', 'Admin']), async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     let limit = parseInt(req.query.limit) || 10;
@@ -55,7 +73,7 @@ router.get('/Products', verifyToken, authorize(['User','Admin']), async (req, re
       };
     }
 
-    // Use .lean() to get plain JS objects instead of heavy Mongoose documents
+    // Use .lean() for high performance on serverless
     const [Products, totalProducts] = await Promise.all([
       Product.find(filter).skip(skip).limit(limit).lean(),
       Product.countDocuments(filter)
@@ -69,9 +87,9 @@ router.get('/Products', verifyToken, authorize(['User','Admin']), async (req, re
 
         // Safely unwrap Mongoose .lean() binary formats
         if (rawData.buffer) {
-          rawData = rawData.buffer; // BSON Binary format
+          rawData = rawData.buffer; 
         } else if (rawData.data && Array.isArray(rawData.data)) {
-          rawData = rawData.data; // { type: 'Buffer', data: [...] } format
+          rawData = rawData.data; 
         }
 
         const buffer = Buffer.from(rawData);
@@ -84,8 +102,8 @@ router.get('/Products', verifyToken, authorize(['User','Admin']), async (req, re
 
       return {
         ...product,
-        imageUrl: base64Image, // Attach usable Base64 string
-        image: undefined       // Strip out raw buffer to keep payload small
+        imageUrl: base64Image, // Usable Base64 string for frontend <img src="..." />
+        image: undefined       // Strip out raw buffer to keep response payload lean
       };
     });
 
@@ -107,6 +125,5 @@ router.get('/Products', verifyToken, authorize(['User','Admin']), async (req, re
     res.status(500).json({ message: 'Server error fetching Products.' });
   }
 });
-
 
 module.exports = router;
