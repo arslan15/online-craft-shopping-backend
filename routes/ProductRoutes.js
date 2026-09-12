@@ -3,6 +3,8 @@ const Product = require('../model/Product');
 const router = express.Router();
 const multer = require('multer');
 const { verifyToken, authorize } = require('../middleware/authMiddleware');
+const cloudinary = require('./utils/cloudinary'); // Adjust path as needed
+const streamifier = require('streamifier');
 
 // Configure multer to use memory storage (Safe for Vercel serverless)
 const storage = multer.memoryStorage();
@@ -25,15 +27,30 @@ router.post('/addProduct', upload.single('ImageUrl'), verifyToken, authorize(['A
       return res.status(400).json({ message: 'Product image is required.' });
     }
 
+    // Function to handle stream upload to Cloudinary from memory buffer
+    const uploadFromBuffer = (req) => {
+      return new Promise((resolve, reject) => {
+        let stream = cloudinary.uploader.upload_stream(
+          { folder: 'ecommerce-products' },
+          (error, result) => {
+            if (result) {
+              resolve(result);
+            } else {
+              reject(error);
+            }
+          }
+        );
+        streamifier.createReadStream(req.file.buffer).pipe(stream);
+      });
+    };
+    // Wait for Cloudinary upload to finish
+    const cloudinaryResult = await uploadFromBuffer(req);
     const newProduct = new Product({
       productName, 
       ProductDescription, 
       productCategoryType, 
       ProductQty,
-      image: {
-        data: req.file.buffer,
-        contentType: req.file.mimetype
-      },
+      ImageUrl: cloudinaryResult.secure_url,
       price 
     });
 
