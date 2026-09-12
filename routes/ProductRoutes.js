@@ -3,7 +3,7 @@ const Product = require('../model/Product');
 const router = express.Router();
 const multer = require('multer');
 const { verifyToken, authorize } = require('../middleware/authMiddleware');
-const cloudinary = require('./utils/cloudinary'); // Adjust path as needed
+const cloudinary = require('../utils/cloudinary'); // Adjust path as needed
 const streamifier = require('streamifier');
 
 // Configure multer to use memory storage (Safe for Vercel serverless)
