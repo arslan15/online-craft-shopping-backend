@@ -23,10 +23,9 @@ const productSchema = new mongoose.Schema({
       required: true
       
     },
-      ImageUrl: {
-      type: String,
-      required: true,
-      unique: true,
+    image: {
+        data: Buffer,
+        contentType: String
     },
       price: {
       type: Number,
@@ -36,6 +35,5 @@ const productSchema = new mongoose.Schema({
   },
   { timestamps: true }
 );
-
 
 module.exports = mongoose.model('product', productSchema);

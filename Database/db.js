@@ -13,5 +13,13 @@ const connectDB = async () => {
     process.exit(1); 
   }
 };
+mongoose.connection.once('open', async () => {
+    try {
+        await mongoose.connection.collection('products').dropIndex('ImageUrl_1');
+        console.log("Successfully dropped legacy ImageUrl_1 index.");
+    } catch (err) {
+        console.log("Legacy index already dropped or not found.");
+    }
+});
 
 module.exports = connectDB;
