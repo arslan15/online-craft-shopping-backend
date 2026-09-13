@@ -45,12 +45,13 @@ router.post('/addProduct', upload.single('ImageUrl'), verifyToken, authorize(['A
     };
     // Wait for Cloudinary upload to finish
     const cloudinaryResult = await uploadFromBuffer(req);
+    console.log('Cloudinary upload result:', cloudinaryResult);
     const newProduct = new Product({
       productName, 
       ProductDescription, 
       productCategoryType, 
       ProductQty,
-      ImageUrl: cloudinaryResult.secure_url,
+      image: cloudinaryResult.secure_url,
       price 
     });
 
@@ -96,13 +97,17 @@ router.get('/Products', verifyToken, authorize(['User', 'Admin']), async (req, r
       Product.countDocuments(filter)
     ]);
     
-    // Transform each product to include the Base64 image URL string
+    // Backward-compatible image resolver
     const formattedProducts = Products.map(product => {
-      let base64Image = '';
-      if (product.image && product.image.data) {
+      let resolvedImageUrl = '';
+
+      if (typeof product.image === 'string') {
+        // 1. New Cloudinary URL format
+        resolvedImageUrl = product.image;
+      } else if (product.image && product.image.data) {
+        // 2. Old binary buffer format
         let rawData = product.image.data;
 
-        // Safely unwrap Mongoose .lean() binary formats
         if (rawData.buffer) {
           rawData = rawData.buffer; 
         } else if (rawData.data && Array.isArray(rawData.data)) {
@@ -113,14 +118,14 @@ router.get('/Products', verifyToken, authorize(['User', 'Admin']), async (req, r
 
         if (buffer.length > 0) {
           const contentType = product.image.contentType || 'image/jpeg';
-          base64Image = `data:${contentType};base64,${buffer.toString('base64')}`;
+          resolvedImageUrl = `data:${contentType};base64,${buffer.toString('base64')}`;
         }
       }
 
       return {
         ...product,
-        imageUrl: base64Image, // Usable Base64 string for frontend <img src="..." />
-        image: undefined       // Strip out raw buffer to keep response payload lean
+        imageUrl: resolvedImageUrl,
+        ImageUrl: resolvedImageUrl
       };
     });
 
@@ -142,5 +147,4 @@ router.get('/Products', verifyToken, authorize(['User', 'Admin']), async (req, r
     res.status(500).json({ message: 'Server error fetching Products.' });
   }
 });
-
 module.exports = router;
