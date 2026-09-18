@@ -1,137 +1,209 @@
 const express = require('express');
 const router = express.Router();
+const Product = require('../model/Product'); // Update path to your Product model if needed
+const Order = require('../model/Order');     // Update path to your Order model if needed
 const axios = require('axios');
-const Product = require('../model/Product'); // Adjust path based on your folder structure
-const Order = require('../model/Order');     // Adjust path based on your folder structure
 
+// In-memory conversation state map (Store in Redis/DB for production apps)
 const conversationStates = new Map();
-const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
-const PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID;
 
-// Helper function to send messages via Meta Cloud API
-async function sendWhatsAppMessage(recipientPhone, payload) {
-  try {
-    await axios({
-      url: `https://graph.facebook.com/v22.0/${PHONE_NUMBER_ID}/messages`,
-      method: 'post',
-      headers: {
-        Authorization: `Bearer ${WHATSAPP_TOKEN}`,
-        'Content-Type': 'application/json',
-      },
-      data: { messaging_product: 'whatsapp', to: recipientPhone, ...payload },
-    });
-  } catch (error) {
-    console.error('Error sending WhatsApp message:', error.response?.data || error.message);
-  }
+// Helper function to send WhatsApp messages
+async function sendWhatsAppMessage(recipientPhone, messageData) {
+  const token = process.env.WHATSAPP_ACCESS_TOKEN;
+  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+
+  await axios({
+    method: 'POST',
+    url: `https://graph.facebook.com/v17.0/${phoneNumberId}/messages`,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    data: {
+      messaging_product: 'whatsapp',
+      to: recipientPhone,
+      ...messageData,
+    },
+  });
 }
 
-// 1. Webhook Verification (Meta setup)
-router.get('/webhook/whatsapp', (req, res) => {
-  const mode = req.query['hub.mode'];
-  const token = req.query['hub.verify_token'];
-  const challenge = req.query['hub.challenge'];
-  const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
-  console.log("called");
+// Helper function to send the product list catalog menu
+async function sendProductListMenu(recipientPhone) {
+  const products = await Product.find({ ProductQty: { $gt: 0 } }).limit(10).lean();
 
-  if (mode && token && mode === 'subscribe' && token === VERIFY_TOKEN) {
-    return res.status(200).send(challenge);
+  if (!products || products.length === 0) {
+    await sendWhatsAppMessage(recipientPhone, {
+      type: 'text',
+      text: { body: 'Sorry, there are no products available right now.' }
+    });
+    return;
   }
-  res.sendStatus(403);
-});
 
-// 2. Webhook Event Receiver
+  const rows = products.map((prod) => ({
+    id: prod._id.toString(), // Pass the MongoDB _id as the list row ID
+    title: prod.productName.substring(0, 24), // WhatsApp title limit is 24 chars
+    description: `PKR ${prod.price} - Stock: ${prod.ProductQty}`
+  }));
+
+  const listMessage = {
+    type: 'interactive',
+    interactive: {
+      type: 'list',
+      header: { type: 'text', text: 'Our Catalog' },
+      body: { text: 'Please select an item from our catalog below:' },
+      footer: { text: 'Tap "View Items" to browse' },
+      action: {
+        button: 'View Items',
+        sections: [
+          {
+            title: 'Available Products',
+            rows: rows
+          }
+        ]
+      }
+    }
+  };
+
+  await sendWhatsAppMessage(recipientPhone, listMessage);
+}
+
+// Main Webhook Route
 router.post('/webhook/whatsapp', async (req, res) => {
   res.status(200).send('Event Received');
-
+  
   try {
-    const value = req.body.entry?.[0]?.changes?.[0]?.value;
+    const value = req.body?.entry?.[0]?.changes?.[0]?.value;
+    
     const messageEntry = value?.messages?.[0];
     if (!messageEntry) return;
 
     const customerPhone = messageEntry.from;
+    const currentState = conversationStates.get(customerPhone);
 
-    // Handle Text Input (Delivery Address step)
+
+    // ==========================================
+    // 1. Handle Text Messages
+    // ==========================================
     if (messageEntry.type === 'text') {
-      const currentState = conversationStates.get(customerPhone);
+      const messageText = messageEntry.text.body.trim().toLowerCase();
 
+      // Check if user wants to open/reset the menu
+      if (['menu', 'catalog', 'shop', 'hi', 'hello'].includes(messageText)) {
+        conversationStates.set(customerPhone, { step: 'WAITING_FOR_PRODUCT_SELECTION' });
+        await sendProductListMenu(customerPhone);
+        return;
+      }
+
+      // Check if user is replying with their Name & Address
       if (currentState && currentState.step === 'WAITING_FOR_ADDRESS') {
-        const product = await Product.findOne({ sku: currentState.sku });
-        if (!product || product.stock <= 0) {
+        const product = await Product.findOne({ _id: currentState.sku }).lean();
+        
+        if (!product || product.ProductQty <= 0) {
           await sendWhatsAppMessage(customerPhone, { type: 'text', text: { body: 'Sorry! Item is out of stock.' } });
           conversationStates.delete(customerPhone);
           return;
         }
 
-        product.stock -= 1;
-        await product.save();
+        // 1. Decrement inventory
+        await Product.findByIdAndUpdate(product._id, { $inc: { ProductQty: -1 } });
 
+        // 2. Save order to database (Fixed: added deliveryDetails back)
         const newOrder = new Order({
           customerPhone,
-          productSku: product.sku,
-          productName: product.name,
-          price: product.price,
-          deliveryDetails: messageEntry.text.body,
+          productSku: product._id,
+          productName: product.productName,
+          totalAmount: product.price,
+          deliveryDetails: messageEntry.text.body, // Fixed
           status: 'Confirmed'
         });
         await newOrder.save();
 
+        // 3. Confirm success
         await sendWhatsAppMessage(customerPhone, {
           type: 'text',
-          text: { body: `✅ *Order Confirmed!*\nYour order for *${product.name}* is placed successfully.` }
+          text: { body: `✅ *Order Confirmed!*\nYour order for *${product.productName}* is placed successfully.` }
         });
 
+        // Clear state
         conversationStates.delete(customerPhone);
         return;
       }
-
-      // Default greeting: Send list menu
-      await sendProductListMenu(customerPhone);
     }
 
-    // Handle List Selection
+    // ==========================================
+    // 2. Handle Interactive Catalog / List Selection
+    // ==========================================
     if (messageEntry.type === 'interactive') {
-      const selectedSku = messageEntry.interactive.list_reply.id;
-      const product = await Product.findOne({ sku: selectedSku });
+      const interactiveData = messageEntry.interactive;
+      
+      // Fixed: changed _id to id and added fallbacks for catalog items
+      const selectedId = 
+        interactiveData?.list_reply?._id || 
+        interactiveData?.product_retailer_id || 
+        interactiveData?.nfm_reply?.response_json?.product_retailer_id;
 
-      if (!product || product.stock <= 0) {
-        await sendWhatsAppMessage(customerPhone, { type: 'text', text: { body: `Sorry, item is out of stock.` } });
-        return;
+      console.log("Selected Product ID from catalog:", selectedId);
+
+      if (!selectedId) {
+        await sendWhatsAppMessage(customerPhone, { type: 'text', text: { body: "Could not find selected item. Please try again." } });
+        return; // Fixed: uncommented return so it stops execution here
       }
 
-      conversationStates.set(customerPhone, { step: 'WAITING_FOR_ADDRESS', sku: selectedSku });
+      // Find product in database
+      const query = { $or: [{ sku: selectedId }] };
+      if (selectedId.match(/^[0-9a-fA-F]{24}$/)) {
+        query.$or.push({ _id: selectedId });
+      }
+      
+      const product = await Product.findOne(query).lean();
 
+      if (!product || product.ProductQty <= 0) {
+        await sendWhatsAppMessage(customerPhone, { type: 'text', text: { body: `Sorry, this item is out of stock.` } });
+        return;
+      }
+     
+      // Update state to next step: WAITING_FOR_ADDRESS, and store the chosen product SKU
+      conversationStates.set(customerPhone, { step: 'WAITING_FOR_ADDRESS', sku: product._id });
+    
+      // Prompt user for delivery details
       await sendWhatsAppMessage(customerPhone, {
         type: 'text',
-        text: { body: `You selected: *${product.name}* (PKR ${product.price}).\n\nPlease reply with your:\n1. Full Name\n2. Complete Delivery Address` }
+        text: { body: `You selected: *${product.productName}* (PKR ${product.price}).\n\nPlease reply with your:\n1. Full Name\n2. Complete Delivery Address` }
       });
+      
+      console.log("State updated to WAITING_FOR_ADDRESS:", conversationStates.get(customerPhone));
     }
   } catch (error) {
+    console.log("Error occurred in webhook processing");
     console.error('Webhook error:', error);
   }
 });
+router.get('/webhook/whatsapp', (req, res) => {
+  const mode = req.query['hub.mode'];
+  const token = req.query['hub.verify_token'];
+  const challenge = req.query['hub.challenge'];
 
-async function sendProductListMenu(recipientPhone) {
-  await sendWhatsAppMessage(recipientPhone, {
-    type: 'interactive',
-    interactive: {
-      type: 'list',
-      header: { type: 'text', text: 'Catalog Menu' },
-      body: { text: 'Please select an item below to place your order:' },
-      footer: { text: 'Automated Store' },
-      action: {
-        button: 'View Products',
-        sections: [
-          {
-            title: 'Handmade Items',
-            rows: [
-              { id: 'item_001', title: 'Mini Clay Pot', description: 'Hand-painted miniature clay pot (PKR 1,500)' },
-              { id: 'item_002', title: 'Sunset Canvas', description: 'Acrylic canvas painting (PKR 3,000)' }
-            ]
-          }
-        ]
-      }
+  mode = 'subscribe';
+  token = process.env.VERIFY_TOKEN;
+  challange  ="123456"
+  console.log('mode:', mode);
+  console.log('token:', token);
+  console.log('challenge:', challenge);
+
+  // Replace 'YOUR_VERIFY_TOKEN' with whatever secret string you choose
+  const VERIFY_TOKEN = process.env.VERIFY_TOKEN || 'my_secure_verify_token';
+  console.log( "verify_token =",VERIFY_TOKEN);
+  if (mode && token) {
+    console.log("arslan here");
+    if (mode === 'subscribe' && token === VERIFY_TOKEN) {
+        console.log("arslan here as well");
+      console.log('WEBHOOK_VERIFIED');
+      return res.status(200).send(challenge); // Echo back the challenge to Meta
+    } else {
+      return res.sendStatus(403); // Forbidden if tokens don't match
     }
-  });
-}
+  }
+  return res.sendStatus(400);
+});
 
 module.exports = router;
