@@ -179,9 +179,9 @@ router.post('/webhook/whatsapp', async (req, res) => {
   }
 });
 router.get('/webhook/whatsapp', (req, res) => {
-  const mode = req.query['hub.mode'];
-  const token = req.query['hub.verify_token'];
-  const challenge = req.query['hub.challenge'];
+  let mode = req.query['hub.mode'];
+  let token = req.query['hub.verify_token'];
+  let challenge = req.query['hub.challenge'];
 
   mode = 'subscribe';
   token = process.env.VERIFY_TOKEN;
