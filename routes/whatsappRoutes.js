@@ -185,7 +185,7 @@ router.get('/webhook/whatsapp', (req, res) => {
 
   mode = 'subscribe';
   token = process.env.VERIFY_TOKEN;
-  challange  ="123456"
+  challenge  ="123456"
   console.log('mode:', mode);
   console.log('token:', token);
   console.log('challenge:', challenge);
