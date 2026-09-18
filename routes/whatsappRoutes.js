@@ -194,10 +194,9 @@ router.get('/webhook/whatsapp', (req, res) => {
   const VERIFY_TOKEN = process.env.VERIFY_TOKEN || 'my_secure_verify_token';
   console.log( "verify_token =",VERIFY_TOKEN);
   if (mode && token) {
-    console.log("arslan here");
+    
     if (mode === 'subscribe' && token === VERIFY_TOKEN) {
-        console.log("arslan here as well");
-      console.log('WEBHOOK_VERIFIED');
+        console.log('WEBHOOK_VERIFIED');
       return res.status(200).send(challenge); // Echo back the challenge to Meta
     } else {
       return res.sendStatus(403); // Forbidden if tokens don't match
