@@ -25,7 +25,7 @@ const productSchema = new mongoose.Schema({
     },
     image: {
         
-        type: String
+        type: mongoose.Schema.Types.Mixed
     },
       price: {
       type: Number,
