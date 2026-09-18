@@ -69,6 +69,7 @@ async function sendProductListMenu(recipientPhone) {
 
 // Main Webhook Route
 router.post('/webhook/whatsapp', async (req, res) => {
+    console.log("webhook callled");
   res.status(200).send('Event Received');
   
   try {
