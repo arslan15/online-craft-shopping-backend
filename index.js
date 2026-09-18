@@ -7,6 +7,7 @@ const userRoutes = require('./routes/UserRoutes');
 const AdminRoutes = require('./routes/AdminRoutes');
 const ContactRoutes = require('./routes/ContactRoutes');
 const orderRoutes = require('./routes/OrderRoutes');
+const whatsappRoutes = require('./routes/whatsappRoutes');
 const app = express();
 connectDB();
 const allowedOrigins = [
@@ -36,6 +37,7 @@ app.use("/api",AdminRoutes);
 app.use("/api",ContactRoutes);
 // Register API Routes
 app.use('/api', orderRoutes);
+app.use('/api', whatsappRoutes);
 
 // Centralized Error Handling Middleware
 app.use((err, req, res, next) => {
