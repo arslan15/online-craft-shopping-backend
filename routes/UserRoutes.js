@@ -111,7 +111,17 @@ console.log('3. Query completed. Result:', existingUser);
     const newUser = new User({name, email, password, confirmPassword, role: role, isActive: isActive });
     await newUser.save();
 
-    res.status(201).json({ message: 'Account created successfully!' });
+   res.status(201).json({ 
+      message: 'Account created successfully!',
+      user: {
+        _id: newUser._id,
+        id: newUser.id,
+        name: newUser.name,
+        email: newUser.email,
+        role: newUser.role,
+        isActive: newUser.isActive
+      }
+    });
   } catch (error) {
     console.error('REGISTER CATCH ERROR:', error.message);
   
@@ -213,5 +223,26 @@ router.put('/users/change-password', verifyToken, async (req, res) => {
 
   res.json({ message: 'Password updated successfully!' });
 });
+router.put('/users/:id', verifyToken, async (req, res) => {
+  try {
+    const { name, email, role } = req.body;
 
+    const updatedUser = await User.findByIdAndUpdate(
+      req.params.id,
+      { $set: { name, email, role } },
+      { new: true, runValidators: true } // Return the updated document & run schema checks
+    ).select('-password'); // Exclude password from the response
+
+    if (!updatedUser) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    res.status(200).json({ 
+      message: 'User updated successfully', 
+      user: updatedUser 
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
 module.exports = router;
