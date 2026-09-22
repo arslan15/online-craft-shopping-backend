@@ -4,6 +4,9 @@ const Order = require('../model/Order');
 const mongoose = require('mongoose');
 const router = express.Router();
 const { verifyToken, authorize } = require('../middleware/authMiddleware');
+const User = require('../model/User');
+const Product = require('../model/Product');
+const Contact = require('../model/Contact');
 
 router.put('/settings', verifyToken, authorize (['Admin']),async (req, res) => {
   try {
@@ -148,6 +151,26 @@ router.patch('/order/approval', verifyToken, authorize (['Admin']), async (req, 
   } catch (error) {
     console.error('Database update error:', error);
     return res.status(500).json({ message: error.message || 'Server error updating DB.' });
+  }
+});
+// GET /admin/stats - Fetch summary counts for the dashboard overview
+router.get('/admin/stats', async (req, res) => {
+  try {
+    const usersCount = await User.countDocuments();
+    const productsCount = await Product.countDocuments(); // Update 'Product' to match your model name
+    const ordersCount = await Order.countDocuments();       // Update 'Order' to match your model name
+    const messagesCount = await Contact.countDocuments();
+
+    return res.status(200).json({
+      success: true,
+      usersCount,
+      productsCount,
+      ordersCount,
+      messagesCount,
+    });
+  } catch (error) {
+    console.error('Failed to fetch admin dashboard stats:', error);
+    return res.status(500).json({ error: 'Failed to retrieve analytics.' });
   }
 });
 module.exports = router; 
