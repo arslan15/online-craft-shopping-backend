@@ -15,7 +15,7 @@ router.post('/contact', async (req, res) => {
     }
     
     await Contact.create({ name, email, subject, message });
-    await sendContactEmail({ name, email, message });
+    await sendContactEmail({ name, email, subject, message });
     
     return res.status(200).json({ 
       success: true, 
