@@ -4,12 +4,12 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 
 const sendContactEmail = async ({ name, email, subject, message,emailTo }) => {
   try {
-    const recipient = email || process.env.EMAIL_USER;
+    const recipient = emailTo || process.env.EMAIL_USER || 'asarslansaeed1678@gmail.com';
     console.log("recipent",recipient);
     const response = await resend.emails.send({
       from: 'onboarding@resend.dev', 
-      to: emailTo,
-      replyTo: emailTo,                
+      to: recipient,
+      replyTo: email,                
       subject: subject || `New Contact Us Message from ${name}`, 
       html: `
         <h3>New Contact Form Submission</h3>
