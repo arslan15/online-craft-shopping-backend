@@ -6,6 +6,7 @@ const sendContactEmail = async ({ name, email, subject, message,emailTo }) => {
   try {
     const recipient = emailTo || process.env.EMAIL_USER || 'asarslansaeed1678@gmail.com';
     console.log("recipent",recipient);
+    console.log("arslan");
     const response = await resend.emails.send({
       from: 'onboarding@resend.dev', 
       to: recipient,
