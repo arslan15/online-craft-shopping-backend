@@ -9,7 +9,7 @@ const sendContactEmail = async ({ name, email, subject, message,emailTo }) => {
       from: 'onboarding@resend.dev', 
       to: recipient,
       replyTo: email,                
-      subject: subject || `New Contact Us Message from ${name}`, 
+      subject: subject || `General inquiry Messages ${name}`, 
      html: `
   <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f8fafc; padding: 30px; color: #334155;">
     <div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05); border: 1px solid #e2e8f0;">
