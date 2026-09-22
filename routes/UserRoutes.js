@@ -225,11 +225,11 @@ router.put('/users/change-password', verifyToken, async (req, res) => {
 });
 router.put('/users/:id', verifyToken, async (req, res) => {
   try {
-    const { name, email, role } = req.body;
+    const { name, email } = req.body;
 
     const updatedUser = await User.findByIdAndUpdate(
       req.params.id,
-      { $set: { name, email, role } },
+      { $set: { name, email } },
       { new: true, runValidators: true } // Return the updated document & run schema checks
     ).select('-password'); // Exclude password from the response
 
