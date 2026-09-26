@@ -102,7 +102,7 @@ router.post('/login', async (req, res) => {
 
       return res.status(200).json({
         requiresOtp: true,
-        message: 'Credentials verified. OTP sent to your email.',
+        message: 'Credentials verified. OTP sent to admin email contact admin.',
       });
     }
 
@@ -125,7 +125,6 @@ router.post('/login', async (req, res) => {
       { otp: null, otpExpires: null },
       { new: true }
     );
- console.log("working fine here after saving")
     // Create session token
     const token = jwt.sign(
       { id: user._id, role: user.role },
