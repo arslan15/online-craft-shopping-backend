@@ -82,7 +82,7 @@ router.post('/login', async (req, res) => {
       user.otpExpires = Date.now() + 10 * 60 * 1000;
       await user.save();
 
-      await resend.emails.send({
+  /*await resend.emails.send({
   from: 'onboarding@resend.dev', // You can use your custom domain later
   to: user.email,
   subject: 'Your Login Verification Code',
@@ -97,12 +97,32 @@ router.post('/login', async (req, res) => {
       <p>This code will expire in <strong>10 minutes</strong>.</p>
     </div>
   `,
-});
+});*/
 
-      return res.status(200).json({
+      /*return res.status(200).json({
         requiresOtp: true,
         message: 'Credentials verified. OTP sent to your email.',
-      });
+      });*/
+          // Create session token
+    const token = jwt.sign(
+      { id: user._id, role: user.role },
+      process.env.JWT_SECRET || 'fallback_secret_key',
+      { expiresIn: '1d' }
+    );
+
+    return res.status(200).json({
+      requiresOtp: false,
+      message: 'Login successful!',
+      user: {
+        token,
+        id: user.id,
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        isActive: user.isActive,
+      },
+    });
     }
 
     // ==========================================
