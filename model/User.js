@@ -32,6 +32,15 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    // --- NEW FIELDS FOR TWO-STEP OTP LOGIN ---
+  otp: { 
+    type: String, 
+    default: null 
+  },
+  otpExpires: { 
+    type: Date, 
+    default: null 
+  },
   },
   { timestamps: true }
 );
