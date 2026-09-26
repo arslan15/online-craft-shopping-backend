@@ -3,60 +3,131 @@ const router = express.Router();
 const User = require('../model/User');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const nodemailer = require('nodemailer');
 const SystemSettings = require('../model/systemSettings');
 const { verifyToken, authorize } = require('../middleware/authMiddleware');
 router.get('/', (req, res) => {
   res.send('User route working');
 });
-router.post('/login',async(req,res)=>{
-try {
-    const { email, password } = req.body;
+// 1. Configure the Nodemailer email transporter
+const transporter = nodemailer.createTransport({
+  host: process.env.EMAIL_HOST || 'smtp.gmail.com',
+  port: process.env.EMAIL_PORT || 587,
+  secure: false, // true for 465, false for other ports
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+});
+router.post('/login', async (req, res) => {
+  try {
+    const { email, password, otp } = req.body;
     const settings = await SystemSettings.findOne();
 
-    // 1. Validate inputs
-    if (!email || !password) {
-      return res.status(400).json({ message: 'Email and password are required.' });
+    // 2. Validate basic input
+    if (!email) {
+      return res.status(400).json({ message: 'Email is required.' });
     }
+
     const user = await User.findOne({ email: email.toLowerCase() });
     if (!user) {
       return res.status(401).json({ message: 'Invalid email or password.' });
     }
 
-    const isBcryptHash = user.password.startsWith('$2a$') || user.password.startsWith('$2b$');
-    let isPasswordValid = false;
-    if(isBcryptHash){
-      isPasswordValid = await bcrypt.compare(password, user.password);
-    }
-    else {
-      // Legacy check: Compare plain-text directly
-      isPasswordValid = user.password === password;
-      // AUTO-MIGRATE: If plain-text password matched, convert it to bcrypt now!
-      if (isPasswordValid) {
-        const salt = await bcrypt.genSalt(10);
-        user.password = await bcrypt.hash(password, salt);
-        user.password = undefined;
-        user.confirmPassword = undefined;
-        await user.save(); 
+    // ==========================================
+    // STEP 1: If OTP is NOT provided, check credentials & send OTP
+    // ==========================================
+    if (!otp) {
+      if (!password) {
+        return res.status(400).json({ message: 'Password is required.' });
       }
-    }
-    
-    if (!isPasswordValid) {
-      return res.status(401).json({ message: 'Invalid email or password.' });
-    }
-    if (settings && !settings.userLogin && user.role!="Admin") {
-      return res.status(503).json({
-        message: 'Application is currently under maintenance. Existing User Login are temporarily paused.',
+
+      const isBcryptHash = user.password.startsWith('$2a$') || user.password.startsWith('$2b$');
+      let isPasswordValid = false;
+
+      if (isBcryptHash) {
+        isPasswordValid = await bcrypt.compare(password, user.password);
+      } else {
+        // Legacy check: Compare plain-text directly
+        isPasswordValid = user.password === password;
+        if (isPasswordValid) {
+          const salt = await bcrypt.genSalt(10);
+          user.password = await bcrypt.hash(password, salt);
+          await user.save(); 
+        }
+      }
+
+      if (!isPasswordValid) {
+        return res.status(401).json({ message: 'Invalid email or password.' });
+      }
+
+      // Check maintenance mode
+      if (settings && !settings.userLogin && user.role !== "Admin") {
+        return res.status(503).json({
+          message: 'Application is currently under maintenance. Existing User Login are temporarily paused.',
+        });
+      }
+
+      // Check if user account is active
+      if (!user.isActive) {
+        return res.status(403).json({ message: 'Your account is currently inactive.' });
+      }
+
+      // Generate 6-digit OTP and set 10-minute expiry
+      const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
+      user.otp = generatedOtp;
+      user.otpExpires = Date.now() + 10 * 60 * 1000;
+      await user.save();
+
+      // Send the email with the OTP code
+      await transporter.sendMail({
+        from: `"Your App Name" <${process.env.EMAIL_USER}>`,
+        to: user.email,
+        subject: 'Your Login Verification Code',
+        html: `
+          <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
+            <h2>Authentication Code</h2>
+            <p>Hello <strong>${user.name}</strong>,</p>
+            <p>You requested to log in. Please use the verification code below:</p>
+            <div style="font-size: 24px; font-weight: bold; color: #7c3aed; margin: 20px 0; letter-spacing: 4px;">
+              ${generatedOtp}
+            </div>
+            <p>This code will expire in <strong>10 minutes</strong>.</p>
+            <p>If you didn't request this, please ignore this email.</p>
+          </div>
+        `,
+      });
+
+      return res.status(200).json({
+        requiresOtp: true,
+        message: 'Credentials verified. OTP sent to your email.',
       });
     }
+
+    // ==========================================
+    // STEP 2: If OTP IS provided, verify it and complete login
+    // ==========================================
+    if (!user.otp || user.otp !== otp) {
+      return res.status(400).json({ message: 'Invalid OTP code.' });
+    }
+
+    if (user.otpExpires < Date.now()) {
+      return res.status(400).json({ message: 'OTP has expired. Please log in again.' });
+    }
+    user.otp = null;
+    user.otpExpires = null;
+    await user.save();
+
+    // Create session token
     const token = jwt.sign(
       { id: user._id, role: user.role },
       process.env.JWT_SECRET || 'fallback_secret_key',
       { expiresIn: '1d' }
     );
-  
-  res.status(200).json({
+
+    return res.status(200).json({
+      requiresOtp: false,
       message: 'Login successful!',
-      
       user: {
         token,
         id: user.id,
@@ -67,8 +138,8 @@ try {
         isActive: user.isActive,
       },
     });
-  }
-  catch (error) {
+
+  } catch (error) {
     console.error('LOGIN ERROR:', error.message);
     res.status(500).json({ message: 'Server error during login.' });
   }
