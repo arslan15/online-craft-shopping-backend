@@ -27,7 +27,6 @@ router.post('/login', async (req, res) => {
     const { email, password, otp } = req.body;
     const settings = await SystemSettings.findOne();
 
-    // 2. Validate basic input
     if (!email) {
       return res.status(400).json({ message: 'Email is required.' });
     }
@@ -51,7 +50,6 @@ router.post('/login', async (req, res) => {
       if (isBcryptHash) {
         isPasswordValid = await bcrypt.compare(password, user.password);
       } else {
-        // Legacy check: Compare plain-text directly
         isPasswordValid = user.password === password;
         if (isPasswordValid) {
           const salt = await bcrypt.genSalt(10);
@@ -64,43 +62,43 @@ router.post('/login', async (req, res) => {
         return res.status(401).json({ message: 'Invalid email or password.' });
       }
 
-      // Check maintenance mode
       if (settings && !settings.userLogin && user.role !== "Admin") {
         return res.status(503).json({
-          message: 'Application is currently under maintenance. Existing User Login are temporarily paused.',
+          message: 'Application is currently under maintenance.',
         });
       }
 
-      // Check if user account is active
       if (!user.isActive) {
         return res.status(403).json({ message: 'Your account is currently inactive.' });
       }
 
       // Generate 6-digit OTP and set 10-minute expiry
       const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
-     const otpExpirationTime = Date.now() + 10 * 60 * 1000;
+      const otpExpirationTime = Date.now() + 10 * 60 * 1000;
 
-     await User.findByIdAndUpdate(user._id, {
-  otp: generatedOtp,
-  otpExpires: otpExpirationTime
-});
+      // SAFE UPDATE BY EMAIL (Bypasses any _id mismatch error)
+      await User.findOneAndUpdate(
+        { email: email.toLowerCase() }, 
+        { otp: generatedOtp, otpExpires: otpExpirationTime },
+        { new: true }
+      );
 
-  await resend.emails.send({
-  from: 'onboarding@resend.dev', // You can use your custom domain later
-  to: 'asarslansaeed1678@gmail.com',
-  subject: 'Your Login Verification Code',
-  html: `
-    <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
-      <h2>Authentication Code</h2>
-      <p>Hello <strong>${user.name}</strong>,</p>
-      <p>Please use the verification code below to complete your login:</p>
-      <div style="font-size: 24px; font-weight: bold; color: #7c3aed; margin: 20px 0; letter-spacing: 4px;">
-        ${generatedOtp}
-      </div>
-      <p>This code will expire in <strong>10 minutes</strong>.</p>
-    </div>
-  `,
-});
+      await resend.emails.send({
+        from: 'onboarding@resend.dev',
+        to: user.email, // Dynamically sends to whoever is logging in (User or Admin)
+        subject: 'Your Login Verification Code',
+        html: `
+          <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
+            <h2>Authentication Code</h2>
+            <p>Hello <strong>${user.name}</strong>,</p>
+            <p>Please use the verification code below to complete your login:</p>
+            <div style="font-size: 24px; font-weight: bold; color: #7c3aed; margin: 20px 0; letter-spacing: 4px;">
+              ${generatedOtp}
+            </div>
+            <p>This code will expire in <strong>10 minutes</strong>.</p>
+          </div>
+        `,
+      });
 
       return res.status(200).json({
         requiresOtp: true,
@@ -118,10 +116,16 @@ router.post('/login', async (req, res) => {
     if (user.otpExpires < Date.now()) {
       return res.status(400).json({ message: 'OTP has expired. Please log in again.' });
     }
+
     user.otp = null;
     user.otpExpires = null;
-    await user.save();
-
+    console.log("working fine here")
+    const updatedUser = await User.findOneAndUpdate(
+      { email: email.toLowerCase() },
+      { otp: null, otpExpires: null },
+      { new: true }
+    );
+ console.log("working fine here after saving")
     // Create session token
     const token = jwt.sign(
       { id: user._id, role: user.role },
