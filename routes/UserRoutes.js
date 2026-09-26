@@ -6,6 +6,8 @@ const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
 const SystemSettings = require('../model/systemSettings');
 const { verifyToken, authorize } = require('../middleware/authMiddleware');
+const { Resend } = require('resend');
+const resend = new Resend(process.env.RESEND_API_KEY);
 router.get('/', (req, res) => {
   res.send('User route working');
 });
@@ -80,24 +82,22 @@ router.post('/login', async (req, res) => {
       user.otpExpires = Date.now() + 10 * 60 * 1000;
       await user.save();
 
-      // Send the email with the OTP code
-      await transporter.sendMail({
-        from: `"Your App Name" <${process.env.EMAIL_USER}>`,
-        to: user.email,
-        subject: 'Your Login Verification Code',
-        html: `
-          <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
-            <h2>Authentication Code</h2>
-            <p>Hello <strong>${user.name}</strong>,</p>
-            <p>You requested to log in. Please use the verification code below:</p>
-            <div style="font-size: 24px; font-weight: bold; color: #7c3aed; margin: 20px 0; letter-spacing: 4px;">
-              ${generatedOtp}
-            </div>
-            <p>This code will expire in <strong>10 minutes</strong>.</p>
-            <p>If you didn't request this, please ignore this email.</p>
-          </div>
-        `,
-      });
+      await resend.emails.send({
+  from: 'onboarding@resend.dev', // You can use your custom domain later
+  to: user.email,
+  subject: 'Your Login Verification Code',
+  html: `
+    <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
+      <h2>Authentication Code</h2>
+      <p>Hello <strong>${user.name}</strong>,</p>
+      <p>Please use the verification code below to complete your login:</p>
+      <div style="font-size: 24px; font-weight: bold; color: #7c3aed; margin: 20px 0; letter-spacing: 4px;">
+        ${generatedOtp}
+      </div>
+      <p>This code will expire in <strong>10 minutes</strong>.</p>
+    </div>
+  `,
+});
 
       return res.status(200).json({
         requiresOtp: true,
