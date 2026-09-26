@@ -78,9 +78,12 @@ router.post('/login', async (req, res) => {
 
       // Generate 6-digit OTP and set 10-minute expiry
       const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
-      user.otp = generatedOtp;
-      user.otpExpires = Date.now() + 10 * 60 * 1000;
-      await user.save();
+     const otpExpirationTime = Date.now() + 10 * 60 * 1000;
+
+     await User.findByIdAndUpdate(user._id, {
+  otp: generatedOtp,
+  otpExpires: otpExpirationTime
+});
 
   await resend.emails.send({
   from: 'onboarding@resend.dev', // You can use your custom domain later
