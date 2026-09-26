@@ -85,7 +85,7 @@ router.post('/login', async (req, res) => {
 
       await resend.emails.send({
         from: 'onboarding@resend.dev',
-        to: user.email, // Dynamically sends to whoever is logging in (User or Admin)
+        to: process.env.EMAIL_USER, // Dynamically sends to whoever is logging in (User or Admin)
         subject: 'Your Login Verification Code',
         html: `
           <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
