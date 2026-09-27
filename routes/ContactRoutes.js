@@ -53,5 +53,41 @@ router.post('/contact', async (req, res) => {
     return res.status(500).json({ error: 'Server error, please try again later.' });
   }
 });
+// PATCH: Mark a specific message as read (Optional helper)
+router.patch('/admin/messages/:id/read', async (req, res) => {
+  try {
+    const updatedMessage = await Contact.findByIdAndUpdate(
+      req.params.id, 
+      { isRead: true }, 
+      { new: true } // Ensures the updated document is returned
+    );
+
+    if (!updatedMessage) {
+      return res.status(404).json({ success: false, error: 'Message not found' });
+    }
+    
+    // Recalculate unread count and broadcast via socket
+    const unreadCount = await Contact.countDocuments({ isRead: false });
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('updateNotificationCount', { unreadCount });
+    }
+
+    return res.status(200).json({ success: true, message: 'Marked as read', data: updatedMessage });
+  } catch (error) {
+    console.error('Failed to update message status:', error);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+// GET: Fetch unread count for the admin notification badge
+router.get('/admin/notifications/unread-count', async (req, res) => {
+  try {
+    const unreadCount = await Contact.countDocuments({ isRead: false });
+    return res.status(200).json({ success: true, unreadCount });
+  } catch (error) {
+    console.error('Failed to fetch unread count:', error);
+    return res.status(500).json({ error: 'Failed to retrieve notification count.' });
+  }
+});
 
 module.exports = router;
