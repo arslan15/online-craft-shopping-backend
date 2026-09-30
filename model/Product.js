@@ -32,6 +32,7 @@ const productSchema = new mongoose.Schema({
       required: true
       
     },
+    discountPrice: { type: Number, default: null }, // Optional discounted price
   },
   { timestamps: true }
 );
